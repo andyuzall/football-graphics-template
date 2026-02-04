@@ -117,35 +117,46 @@ def plot_heat_map_pass(df, team, x, y, title):
 
 
 # Visualizar la matriz de pases por equipo
-def plot_pass_matrix(df, team):
- df = df[df.team_name == team]
- df_pas = df[df.pass_outcome_name.isnull()]
+def plot_pass_matrix(df, team_id, fixture_uuid):
+    df = df[(df['team_id'] == team_id) & (df['fixture_uuid'] == fixture_uuid)]
+    df_pas = df[df['pass'] == 1]
 
- avg = df_pas.groupby('player_name').agg({'location_x':'mean', 'location_y':['mean', 'count']})
+    avg = df_pas.groupby('player_id').agg({'start_x': ['mean', 'count'], 'start_y': 'mean'})
+    avg.columns = ['x_avg', 'count', 'y_avg']
+    avg = avg[['x_avg', 'y_avg', 'count']]
 
- avg.columns = ['x_avg', 'y_avg', 'count']
+    btw = df_pas.groupby(['player_id', 'end_player_id']).size().reset_index(name='n_passes')
 
- btw = df_pas.groupby(['player_name', 'pass_recipient_name']).id.count().reset_index()
+    merg1 = btw.merge(avg, left_on='player_id', right_index=True)
+    pass_btw = merg1.merge(avg, left_on='end_player_id', right_index=True, suffixes=['', '_end'])
 
- merg1 = btw.merge(avg, left_on='player_name', right_index=True)
- pass_btw = merg1.merge(avg, left_on='pass_recipient_name', right_index=True, suffixes=['', '_end'])
+    pas_rec = pass_btw.groupby('end_player_id')['n_passes'].sum()
+    pas_rec.name = 'recibidos'
+    new_avg = pd.concat([avg, pas_rec], axis=1)
+    new_avg['recibidos'] = new_avg['recibidos'].fillna(0).astype(int)
 
- pas_rec = pass_btw.groupby('pass_recipient_name').id.sum()
- new_avg = pd.concat([avg, pas_rec],axis=1)
- 
- fig, ax = plt.subplots(figsize=(15,10))
- pitch = Pitch(pitch_color='#22312b', line_color='white')
- pitch.draw(ax=ax)
+    fig, ax = plt.subplots(figsize=(15, 10))
+    pitch = Pitch(pitch_color='#22312b', line_color='white')
+    pitch.draw(ax=ax)
 
- for i in range(len(pass_btw)):
-    arrows = pitch.arrows(pass_btw.x_avg.values[i], pass_btw.y_avg.values[i], pass_btw.x_avg_end.values[i], pass_btw.y_avg_end.values[i], ax=ax, 
-                         color='white', width=pass_btw.id.values[i], headwidth=2,headlength=2,
-                         headaxislength=2, zorder=1, alpha=0.5)
-    nodes = pitch.scatter(pass_btw.x_avg.values[i], pass_btw.y_avg.values[i],
-                          s=pass_btw['count'].values[i]*100, color='red', ax=ax, alpha=0.5)
-for i in range(len(avg)):
- pitch.annotate((new_avg['id'].values[i] ,new_avg['count'].values[i]),
- xy=(new_avg['x_avg'].values[i], new_avg['y_avg'].values[i]), ax=ax,
- va='center', ha='center',color = 'white')
+    for i in range(len(pass_btw)):
+        pitch.arrows(
+            pass_btw.x_avg.values[i], pass_btw.y_avg.values[i],
+            pass_btw.x_avg_end.values[i], pass_btw.y_avg_end.values[i],
+            ax=ax, color='white', width=pass_btw.n_passes.values[i],
+            headwidth=2, headlength=2, headaxislength=2, zorder=1, alpha=0.5
+        )
+        pitch.scatter(
+            pass_btw.x_avg.values[i], pass_btw.y_avg.values[i],
+            s=pass_btw['count'].values[i] * 100, color='red', ax=ax, alpha=0.5
+        )
+    for i in range(len(avg)):
+        pitch.annotate(
+            (new_avg['recibidos'].values[i], new_avg['count'].values[i]),
+            xy=(new_avg['x_avg'].values[i], new_avg['y_avg'].values[i]),
+            ax=ax, va='center', ha='center', color='white'
+        )
+    plt.show()
 
-# Ejemplo de uso: plot_pass_matrix(pases, 'Tottenham Hotspur')
+
+# Ejemplo de uso: plot_pass_matrix(df_pases, 'team-uuid-123')
