@@ -259,3 +259,74 @@ def plot_heatmap_set_pieces(
     plt.title("ABP | {} - {}".format(team_name, name), fontsize=16)
     plt.tight_layout()
     plt.show()
+
+# Añade columna time_bucket con etiquetas cada 15 min.
+def add_time_bucket_column_spark(
+    df,
+    frame_col="start_frame",
+    kickoff_col="kickoff",
+    goal_col="goal",
+    frames_per_second=25,
+    new_col="time_bucket",
+):
+    """
+    Añade columna time_bucket con etiquetas cada 15 min.
+    - Kickoff válido = kickoff==1 y evento anterior goal != 1.
+    - Primer kickoff válido = min 0 (1T), segundo = inicio 2T.
+    - x = (start_frame - kickoff_frame) / 25 / 60 (minutos en el tiempo actual).
+    """
+    w_order = Window.orderBy(frame_col)
+
+    df = df.withColumn("_prev_goal", F.lag(F.col(goal_col), 1).over(w_order))
+    df = df.withColumn(
+        "_valid_kickoff",
+        (F.col(kickoff_col) == 1)
+        & (F.col("_prev_goal").isNull() | (F.col("_prev_goal") != 1)),
+    )
+
+    kickoff_rows = (
+        df.filter(F.col("_valid_kickoff"))
+        .orderBy(frame_col)
+        .limit(2)
+        .select(frame_col)
+        .collect()
+    )
+    k0 = int(kickoff_rows[0][0]) if kickoff_rows else 0
+    k1 = int(kickoff_rows[1][0]) if len(kickoff_rows) > 1 else None
+
+    fps = float(frames_per_second)
+    k0_lit = F.lit(k0)
+
+    df = df.drop("_prev_goal", "_valid_kickoff")
+
+    if k1 is None:
+        df = df.withColumn("_half", F.lit(1))
+        df = df.withColumn("_x", (F.col(frame_col) - k0_lit) / fps / 60)
+    else:
+        k1_lit = F.lit(k1)
+        df = df.withColumn(
+            "_half",
+            F.when(F.col(frame_col) >= k1_lit, 2).otherwise(1),
+        )
+        df = df.withColumn(
+            "_x",
+            F.when(
+                F.col("_half") == 2,
+                (F.col(frame_col) - k1_lit) / fps / 60,
+            ).otherwise((F.col(frame_col) - k0_lit) / fps / 60),
+        )
+
+    df = df.withColumn(
+        new_col,
+        F.when(F.col("_half") == 1, F.when(F.col("_x") <= 15, F.lit("15 mins"))
+            .when(F.col("_x") <= 30, F.lit("30 mins"))
+            .when(F.col("_x") <= 45, F.lit("45 mins"))
+            .otherwise(F.lit("Tiempo añadido 1T")))
+        .otherwise(
+            F.when(F.col("_x") <= 15, F.lit("60 mins"))
+            .when(F.col("_x") <= 30, F.lit("75 mins"))
+            .when(F.col("_x") <= 45, F.lit("90 mins"))
+            .otherwise(F.lit("Tiempo añadido 2T")),
+        ),
+    )
+    return df.drop("_half", "_x")
