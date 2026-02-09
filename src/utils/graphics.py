@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
+import numpy as np
 import pandas as pd
 import seaborn as sns
-from mplsoccer import Pitch
+from mplsoccer import Pitch, VerticalPitch
 
 
 class Graphics:
@@ -194,4 +196,66 @@ def plot_pass_matrix(df, team_id, fixture_uuid):
             ha="center",
             color="white",
         )
+    plt.show()
+
+# Visualizar heatmap de acciones a balón parado por zonas
+def plot_heatmap_set_pieces(
+    df,
+    x_col="start_x",
+    y_col="start_y",
+    team_name="",
+    name="",
+):
+    df = df[(df['free_kick_pass'] == 1) | (df['free_kick_shot'] == 1) | (df['corner_kick'] == 1)]
+    df_set = df[(df['team_name'] == team_name) & (df['name'] == name)]
+    if df_set.empty:
+        raise ValueError("No hay filas con acciones a balón parado (revisa set_piece_columns).")
+
+    pitch = VerticalPitch(
+        pitch_type="skillcorner", 
+        line_zorder=2,
+        pitch_width=68,
+        pitch_length=105,
+        pitch_color="#f4edf0"
+    )
+    fig, ax = pitch.draw(figsize=(4.125, 6))
+    fig.set_facecolor("#f4edf0")
+
+    bin_x = np.linspace(pitch.dim.left, pitch.dim.right, num=7)
+    bin_y = np.sort(
+        np.array(
+            [
+                pitch.dim.bottom,
+                pitch.dim.six_yard_bottom,
+                pitch.dim.six_yard_top,
+                pitch.dim.top,
+            ]
+        )
+    )
+    bin_statistic = pitch.bin_statistic(
+        df_set[x_col].values,
+        df_set[y_col].values,
+        statistic="count",
+        bins=(bin_x, bin_y),
+        normalize=True,
+    )
+    pitch.heatmap(
+        bin_statistic, ax=ax, cmap="Reds", edgecolor="#f9f9f9"
+    )
+    path_eff = [
+        path_effects.Stroke(linewidth=1.5, foreground="black"),
+        path_effects.Normal(),
+    ]
+    pitch.label_heatmap(
+        bin_statistic,
+        color="#f4edf0",
+        fontsize=18,
+        ax=ax,
+        ha="center",
+        va="center",
+        str_format="{:.0%}",
+        path_effects=path_eff,
+    )
+    plt.title("ABP | {} - {}".format(team_name, name), fontsize=16)
+    plt.tight_layout()
     plt.show()
