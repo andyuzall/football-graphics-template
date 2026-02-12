@@ -160,9 +160,15 @@ def plot_pass_matrix(df, team_id, fixture_uuid):
     new_avg = pd.concat([avg, pas_rec], axis=1)
     new_avg["recibidos"] = new_avg["recibidos"].fillna(0).astype(int)
 
+    # Estilo: campo verde, líneas blancas, círculos/pases azul claro, texto blanco sans-serif
     fig, ax = plt.subplots(figsize=(15, 10))
-    pitch = Pitch(pitch_color="#22312b", line_color="white")
+    fig.patch.set_facecolor("#2d5016")
+    pitch = Pitch(pitch_color="grass", line_color="white", stripe=True, stripe_color="#2d5016")
     pitch.draw(ax=ax)
+
+    # Azul claro/celeste para pases (con transparencia) y círculos; borde azul oscuro
+    color_pases = "#7dd3fc"
+    color_borde = "#1e3a5f"
 
     for i in range(len(pass_btw)):
         pitch.arrows(
@@ -171,21 +177,24 @@ def plot_pass_matrix(df, team_id, fixture_uuid):
             pass_btw.x_avg_end.values[i],
             pass_btw.y_avg_end.values[i],
             ax=ax,
-            color="white",
+            color=color_pases,
             width=pass_btw.n_passes.values[i],
             headwidth=2,
             headlength=2,
             headaxislength=2,
             zorder=1,
-            alpha=0.5,
+            alpha=0.65,
         )
         pitch.scatter(
             pass_btw.x_avg.values[i],
             pass_btw.y_avg.values[i],
             s=pass_btw["count"].values[i] * 100,
-            color="red",
+            color=color_pases,
+            edgecolors=color_borde,
+            linewidths=1.5,
             ax=ax,
-            alpha=0.5,
+            alpha=0.9,
+            zorder=2,
         )
     for i in range(len(avg)):
         pitch.annotate(
@@ -195,6 +204,9 @@ def plot_pass_matrix(df, team_id, fixture_uuid):
             va="center",
             ha="center",
             color="white",
+            fontsize=10,
+            fontweight="bold",
+            fontfamily="sans-serif",
         )
     plt.show()
 
