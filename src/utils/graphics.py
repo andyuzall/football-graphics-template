@@ -342,3 +342,46 @@ def add_time_bucket_column_spark(
         ),
     )
     return df.drop("_half", "_x")
+    
+def plot_pass_confusion_matrix(df, team_id, fixture_uuid, figsize=(10, 8), annot=True, cmap="Blues"):
+    """
+    Visualiza una matriz de confusión de pases: filas = pasador, columnas = receptor, valor = nº de pases.
+    Mismos filtros que plot_pass_matrix (team_id, fixture_uuid, pass==1).
+    Etiquetas: player_name y end_player_name si existen en df; si no, player_id y end_player_id.
+    """
+    df_f = df[(df["team_id"] == team_id) & (df["fixture_uuid"] == fixture_uuid)]
+    df_pas = df_f[df_f["pass"] == 1]
+
+    if df_pas.empty:
+        raise ValueError("No hay pases para ese team_id y fixture_uuid.")
+
+    if "player_name" in df_pas.columns and "end_player_name" in df_pas.columns:
+        row_col, col_col = "player_name", "end_player_name"
+    else:
+        row_col, col_col = "player_id", "end_player_id"
+
+    mat = (
+        df_pas.groupby([row_col, col_col])
+        .size()
+        .unstack(fill_value=0)
+    )
+    # Asegurar que filas y columnas coinciden (todos los jugadores)
+    all_players = sorted(set(mat.index) | set(mat.columns))
+    mat = mat.reindex(index=all_players, columns=all_players, fill_value=0).astype(int)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.heatmap(
+        mat,
+        annot=annot,
+        fmt="d",
+        cmap=cmap,
+        linewidths=0.5,
+        ax=ax,
+        cbar_kws={"label": "Nº de pases"},
+    )
+    ax.set_xlabel("Receptor")
+    ax.set_ylabel("Pasador")
+    ax.set_title("Matriz de pases (pasador → receptor)")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.show()
