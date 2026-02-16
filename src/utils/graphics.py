@@ -81,41 +81,121 @@ def plot_event_shots(matches, shots):
 # Ejemplo de uso: plot_event_shots(matches, shots)
 
 
-# Visualizar pases (exitosos y fallidos) por equipo
-def draw_pass_event(df, team_id, fixture_uuid):
-    df = df[(df['team_id'] == team_id) & (df['fixture_uuid'] == fixture_uuid)]
-    mask = df['pass'] == 1
+# Visualizar pases (exitosos y fallidos) por jugador usando grid (un campo por player_name)
+def draw_pass_event(df, team_id, fixture_uuid, ncols=3, figheight=20, player_col=None):
+    """
+    Dibuja un campo por jugador con sus pases (completados y fallidos) usando pitch.grid.
 
-    fig, ax = plt.subplots(figsize=(15, 10))
+    Args:
+        df: DataFrame con columnas team_id, fixture_uuid, pass, start_x, start_y, end_x, end_y
+            y player_name (o player_id si se pasa player_col).
+        team_id: ID del equipo.
+        fixture_uuid: UUID del partido.
+        ncols: Número de columnas del grid de campos.
+        figheight: Altura total de la figura en pulgadas.
+        player_col: Columna para agrupar por jugador ('player_name' o 'player_id'). Si None, usa 'player_name' si existe, sino 'player_id'.
+    """
+    df = df[(df["team_id"] == team_id) & (df["fixture_uuid"] == fixture_uuid)].copy()
+    if df.empty:
+        raise ValueError("No hay eventos para ese team_id y fixture_uuid.")
+
+    if player_col is None:
+        player_col = "player_name" if "player_name" in df.columns else "player_id"
+    if player_col not in df.columns:
+        raise ValueError(f"El DataFrame no tiene la columna '{player_col}'.")
+
+    # Solo filas que son pases (tienen start_x, end_x, etc.)
+    df = df.dropna(subset=["start_x", "start_y", "end_x", "end_y"])
+    if df.empty:
+        raise ValueError("No hay pases con coordenadas para ese equipo y partido.")
+
+    players = df[player_col].dropna().unique().tolist()
+    n_players = len(players)
+    if n_players == 0:
+        raise ValueError("No hay jugadores con pases.")
+
+    nrows = int(np.ceil(n_players / ncols))
     pitch = Pitch(pitch_color="#22312b", line_color="white")
-    pitch.draw(ax=ax)
 
-    pitch.arrows(
-        df[mask].start_x,
-        df[mask].start_y,
-        df[mask].end_x,
-        df[mask].end_y,
-        color="#ad993c",
-        ax=ax,
-        width=2,
-        headwidth=10,
-        headlength=10,
-        label="Pases completados",
+    fig, axs = pitch.grid(
+        nrows=nrows,
+        ncols=ncols,
+        figheight=figheight,
+        grid_height=0.84,
+        grid_width=0.95,
+        space=0.05,
+        bottom=0.025,
+        endnote_height=0.03,
+        endnote_space=0.01,
+        title_height=0.06,
+        title_space=0.01,
+        axis=True,
     )
-    pitch.arrows(
-        df[~mask].start_x,
-        df[~mask].start_y,
-        df[~mask].end_x,
-        df[~mask].end_y,
-        color="#ba4f45",
-        ax=ax,
-        width=2,
-        headwidth=10,
-        headlength=10,
-        label="Pases fallidos",
-    )
-    ax.legend(handlelength=5, edgecolor="white", fontsize=10, loc="lower left")
-    plt.title("Pases del {}".format(team_id), fontsize=16)
+
+    for idx, ax in enumerate(axs["pitch"].flat):
+        if idx >= n_players:
+            ax.set_visible(False)
+            continue
+        player = players[idx]
+        df_player = df[df[player_col] == player]
+        mask = df_player["pass"] == 1
+        complete = df_player[mask]
+        failed = df_player[~mask]
+
+        if not complete.empty:
+            pitch.arrows(
+                complete.start_x,
+                complete.start_y,
+                complete.end_x,
+                complete.end_y,
+                color="#ad993c",
+                ax=ax,
+                width=2,
+                headwidth=10,
+                headlength=10,
+            )
+        if not failed.empty:
+            pitch.arrows(
+                failed.start_x,
+                failed.start_y,
+                failed.end_x,
+                failed.end_y,
+                color="#ba4f45",
+                ax=ax,
+                width=2,
+                headwidth=10,
+                headlength=10,
+            )
+
+        total = len(complete) + len(failed)
+        pct = round(100 * len(complete) / total, 1) if total else 0
+        ax.set_title(
+            f"{player} | {len(complete)}/{total} ({pct}%)",
+            fontsize=10,
+            color="white",
+        )
+
+    if "title" in axs:
+        axs["title"].text(
+            0.5,
+            0.5,
+            f"Pases por jugador (team_id={team_id})",
+            fontsize=14,
+            color="white",
+            ha="center",
+            va="center",
+        )
+    if "endnote" in axs:
+        axs["endnote"].text(
+            0.5,
+            0.5,
+            "Amarillo: completados | Rojo: fallidos",
+            fontsize=10,
+            color="white",
+            ha="center",
+            va="center",
+        )
+
     plt.show()
 
 
